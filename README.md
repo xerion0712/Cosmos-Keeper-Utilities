@@ -1,104 +1,143 @@
-![logo](./logo.jpg)
+# Cosmos Keeper Utilities
 
-Keeper utilities for [Cosmos SDK](https://github.com/cosmos/cosmos-sdk) that attempt to implement [Active Record](https://en.wikipedia.org/wiki/Active_record_pattern).
+A Go library providing Active Record pattern implementations for the Cosmos SDK, featuring auto-incrementing IDs, string-keyed storage, and one-to-many associations.
 
-Currently, three interfaces are supported:
-- `Uint64KeyedIterableKeeper` - An auto-incrementing `uint64` indexed keeper
-- `StringKeyedKeeper` - A `string` indexed keeper
-- `Uint64AssociationKeeper` - One-to-many associations with another store
+## Features
 
-[![CircleCI](https://circleci.com/gh/shanev/cosmos-record-keeper.svg?style=svg)](https://circleci.com/gh/shanev/cosmos-record-keeper)
-[![Go Report Card](https://goreportcard.com/badge/github.com/shanev/cosmos-record-keeper)](https://goreportcard.com/report/github.com/shanev/cosmos-record-keeper)
+- **Auto-incrementing ID management** - Uint64KeyedIterableKeeper for sequential ID tracking
+- **String-keyed storage** - StringKeyedKeeper for flexible key-based storage
+- **One-to-many associations** - Uint64AssociationKeeper for relational data modeling
+- **Active Record pattern** - Simplified object persistence and retrieval
 
-## Getting Started
+## Installation
 
-### Install library
-
-```
-go get github.com/shanev/cosmos-record-keeper
+```bash
+go get github.com/shanev/cosmos-keeper-utilities
 ```
 
-## Example
+## Quick Start
 
-Embed a `RecordKeeper` struct inside a `Keeper`.
+### Basic Usage
 
 ```go
-type Keeper struct {
-    RecordKeeper
+import (
+    "github.com/cosmos/cosmos-sdk/types"
+    keeperutil "github.com/xerion0712/cosmos-keeper-utilities"
+)
+
+type AppKeeper struct {
+    keeperutil.RecordKeeper
+}
+
+// Initialize keeper
+appKeeper := AppKeeper{
+    RecordKeeper: keeperutil.NewRecordKeeper(storeKey, codec),
 }
 ```
 
-### Initialization
+### Record Management
 
 ```go
-keeper := Keeper{
-    RecordKeeper(storeKey, codec),
-}
+// Add a new record (auto-increments ID)
+record := MyRecord{Name: "Example", Value: 100}
+id := appKeeper.Add(ctx, record)
+
+// Retrieve a record
+var retrievedRecord MyRecord
+appKeeper.Get(ctx, id, &retrievedRecord)
+
+// Update a record
+updatedRecord := MyRecord{Name: "Updated", Value: 200}
+appKeeper.Update(ctx, id, updatedRecord)
+
+// Delete a record
+appKeeper.Delete(ctx, id)
 ```
 
-### Adding
-
-Adds an object to a store and increments a unique id that will track the object.
+### String-keyed Storage
 
 ```go
-record := Record{}
-id := k.Add(ctx, record)
+// Set with string key
+appKeeper.StringSet(ctx, "user:alice", userRecord)
+
+// Get with string key
+var user UserRecord
+appKeeper.StringGet(ctx, "user:alice", &user)
 ```
 
-### Getting
+### One-to-Many Associations
 
 ```go
-var record Record
-k.Get(ctx, id, &record)
-```
+// Create association between records
+appKeeper.Push(ctx, usersStoreKey, postsStoreKey, userID, postID)
 
-### Setting
-
-If you want control over an object's unique id, you can manually set it:
-
-```go
-id := k.IncrementID(ctx)
-k.Set(ctx, id, Record{})
-```
-
-### Iterating
-
-```go
-k.Each(ctx, func(recordBytes []byte) bool {
-    var r Record
-    k.codec.MustUnmarshalBinaryLengthPrefixed(recordBytes, &r)
-    // do something with `Record` r
-    return true
+// Iterate through associated records
+appKeeper.Map(ctx, postsStoreKey, userID, func(postID uint64) {
+    // Process each associated post
 })
 ```
 
-### Deleting
-```go
-k.Delete(ctx, id)
-```
-
-### Updating
-```go
-updatedRecord := Record{}
-k.Update(ctx, id, updatedRecord)
-```
-
-## String Example
+### Iteration
 
 ```go
-// setter
-record := Record{}
-k.StringSet(ctx, "key1", record)
-
-// getter
-k.StringGet(ctx, "key1", &record)
-```
-
-## One-to-many Association Example
-
-```go
-k.Push(ctx, k.StoreKey, k2.StoreKey, uint64(1), uint64(2))
-k.Map(ctx, k2.StoreKey, uint64(2), func(id uint64) {
-    // id == 1
+// Iterate through all records
+appKeeper.Each(ctx, func(recordBytes []byte) bool {
+    var record MyRecord
+    appKeeper.codec.MustUnmarshalBinaryLengthPrefixed(recordBytes, &record)
+    // Process record
+    return true // continue iteration
 })
 ```
+
+## Advanced Usage
+
+### Manual ID Management
+
+```go
+// Manually set ID and record
+customID := appKeeper.IncrementID(ctx)
+appKeeper.Set(ctx, customID, MyRecord{Data: "custom"})
+```
+
+### Association Management
+
+```go
+// Add multiple associations
+appKeeper.Push(ctx, parentStore, childStore, parentID, childID1)
+appKeeper.Push(ctx, parentStore, childStore, parentID, childID2)
+
+// Check if association exists
+hasAssociation := appKeeper.Has(ctx, parentStore, parentID, childID1)
+
+// Remove association
+appKeeper.DeleteAssociation(ctx, parentStore, parentID, childID1)
+```
+
+## API Reference
+
+### Core Methods
+
+- `Add(ctx types.Context, record interface{}) uint64` - Add record with auto-increment ID
+- `Get(ctx types.Context, id uint64, record interface{})` - Retrieve record by ID
+- `Set(ctx types.Context, id uint64, record interface{})` - Set record with specific ID
+- `Update(ctx types.Context, id uint64, record interface{})` - Update existing record
+- `Delete(ctx types.Context, id uint64)` - Delete record by ID
+- `Each(ctx types.Context, callback func([]byte) bool)` - Iterate through all records
+
+### String Key Methods
+
+- `StringSet(ctx types.Context, key string, record interface{})`
+- `StringGet(ctx types.Context, key string, record interface{})`
+- `StringHas(ctx types.Context, key string) bool`
+- `StringDelete(ctx types.Context, key string)`
+
+### Association Methods
+
+- `Push(ctx types.Context, parentStore, childStore types.StoreKey, parentID, childID uint64)`
+- `Map(ctx types.Context, childStore types.StoreKey, parentID uint64, callback func(uint64))`
+- `Has(ctx types.Context, parentStore types.StoreKey, parentID, childID uint64) bool`
+- `DeleteAssociation(ctx types.Context, parentStore types.StoreKey, parentID, childID uint64)`
+
+## License
+
+Apache-2.0 License - see LICENSE file for details.
